@@ -46,7 +46,7 @@ export class GroqProvider implements IAIProvider {
 
   // Whisper via Groq pour transcription rapide
   async transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
-    const file = new File([audioBuffer], filename, { type: 'audio/ogg' });
+    const file = new File([new Uint8Array(audioBuffer)], filename, { type: 'audio/ogg' });
 
     const response = await this.client.audio.transcriptions.create({
       file,
