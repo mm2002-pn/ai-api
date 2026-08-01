@@ -11,7 +11,7 @@ import { logger } from '../config/logger';
 import { env } from '../config/env';
 
 export const chatController = async (req: AIRequest, res: Response): Promise<void> => {
-  const { message } = req.body as { message?: string };
+  const { message, phone } = req.body as { message?: string; phone?: string };
 
   if (!message?.trim()) {
     res.status(422).json({ success: false, message: 'Message requis' });
@@ -24,6 +24,7 @@ export const chatController = async (req: AIRequest, res: Response): Promise<voi
       tenantId: req.tenantId!,
       accessToken: req.accessToken!,
       message,
+      phone,
     });
     res.json({ success: true, data: result });
   } catch (err) {

@@ -2,10 +2,7 @@ import { ClaudeProvider } from '../providers/claude.provider';
 import { getSession, createSession, saveSession, addToHistory } from '../memory/redis.memory';
 import { detectLanguage } from './language.service';
 import { translateWolofToFrench } from './translation.service';
-import { detectIntent } from './intent.service';
-import { getToolDefinitions, executeTool } from './toolRouter.service';
 import { btpSystemPrompt } from '../prompts/system.prompt';
-import { ToolContext } from '../interfaces/Tool';
 import { ChatMessage } from '../interfaces/AIProvider';
 import { logger } from '../config/logger';
 
@@ -16,27 +13,28 @@ export interface ChatInput {
   tenantId: string;
   accessToken: string;
   message: string;
+  phone?: string;
 }
 
 export interface ChatOutput {
   reply: string;
   language: string;
-  intent: string;
-  toolsUsed: string[];
+  parsed: Record<string, unknown>;
 }
 
 export const chat = async (input: ChatInput): Promise<ChatOutput> => {
-  const { userId, tenantId, accessToken, message } = input;
-  const sessionId = `${tenantId}:${userId}`;
+  const { userId, tenantId, message, phone } = input;
 
-  // Récupérer ou créer la session
+  // Session par numéro de téléphone → chaque utilisateur WhatsApp a sa propre mémoire
+  const sessionId = phone ? `${tenantId}:${phone}` : `${tenantId}:${userId}`;
+
   let session = await getSession(sessionId);
   if (!session) {
-    session = createSession(userId, tenantId);
+    session = createSession(phone ?? userId, tenantId);
     await saveSession(session);
   }
 
-  // Détection langue + traduction si wolof
+  // Détection langue + traduction wolof si nécessaire
   const language = detectLanguage(message);
   let processedMessage = message;
   if (language === 'wo') {
@@ -44,80 +42,58 @@ export const chat = async (input: ChatInput): Promise<ChatOutput> => {
     logger.debug('Translated wolof', { original: message, translated: processedMessage });
   }
 
-  // Détection intention
-  const intent = await detectIntent(processedMessage);
-  logger.debug('Intent detected', { intent, language });
-
-  // Construire l'historique pour Claude
-  const history: ChatMessage[] = session.history.slice(-10).map((h) => ({
+  // Construire l'historique (30 derniers messages)
+  const history: ChatMessage[] = session.history.slice(-30).map((h) => ({
     role: h.role,
     content: h.content,
   }));
   history.push({ role: 'user', content: processedMessage });
 
-  const toolCtx: ToolContext = { tenantId, userId, accessToken };
-  const toolsUsed: string[] = [];
-
-  // Premier appel Claude avec tools
-  let response = await claude.chat({
+  // Appel Claude — réponse attendue en JSON structuré { type, data }
+  const response = await claude.chat({
     system: btpSystemPrompt,
     messages: history,
-    tools: getToolDefinitions(),
+    tools: [],
     maxTokens: 1024,
   });
 
-  // Boucle tool use (agentic loop)
-  let iterations = 0;
-  while (response.toolCalls?.length && iterations < 5) {
-    iterations++;
-    const toolResults: ChatMessage[] = [];
+  const reply = response.text ?? '';
 
-    for (const toolCall of response.toolCalls) {
-      toolsUsed.push(toolCall.name);
-      const result = await executeTool(toolCall.name, toolCall.input, toolCtx);
-      toolResults.push({
-        role: 'user',
-        content: JSON.stringify({
-          tool_result: { tool_use_id: toolCall.id, content: JSON.stringify(result.data ?? result.error) },
-        }),
-      });
+  // Parser la réponse JSON de Claude
+  let parsed: Record<string, unknown> = { type: 'response_user', data: { message: reply } };
+  try {
+    const raw = typeof reply === 'string' ? reply : JSON.stringify(reply);
+    const candidate = JSON.parse(raw);
+    if (candidate && typeof candidate.type === 'string') {
+      parsed = candidate;
     }
-
-    // Relancer Claude avec les résultats des outils
-    const updatedHistory = [
-      ...history,
-      { role: 'assistant' as const, content: response.text || '[tool call]' },
-      ...toolResults,
-    ];
-
-    response = await claude.chat({
-      system: btpSystemPrompt,
-      messages: updatedHistory,
-      tools: getToolDefinitions(),
-      maxTokens: 1024,
-    });
+  } catch {
+    // Si Claude n'a pas renvoyé du JSON valide, on encapsule le texte
+    const match = reply.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        const candidate = JSON.parse(match[0]);
+        if (candidate && typeof candidate.type === 'string') parsed = candidate;
+      } catch { /* garder le fallback */ }
+    }
   }
 
-  const reply = response.text;
-
-  // Sauvegarder dans l'historique
+  // Sauvegarder dans l'historique Redis
   await addToHistory(sessionId, 'user', message);
   await addToHistory(sessionId, 'assistant', reply);
 
-  // Mettre à jour les métadonnées de session
   session.language = language;
-  session.lastIntent = intent;
   await saveSession(session);
 
-  return { reply, language, intent, toolsUsed };
+  return { reply, language, parsed };
 };
 
 export const streamChat = async (
   input: ChatInput,
   onChunk: (chunk: string) => void
 ): Promise<void> => {
-  const { userId, tenantId, message } = input;
-  const sessionId = `${tenantId}:${userId}`;
+  const { userId, tenantId, message, phone } = input;
+  const sessionId = phone ? `${tenantId}:${phone}` : `${tenantId}:${userId}`;
 
   const language = detectLanguage(message);
   let processedMessage = message;
@@ -126,7 +102,7 @@ export const streamChat = async (
   }
 
   const session = await getSession(sessionId);
-  const history: ChatMessage[] = (session?.history.slice(-10) ?? []).map((h) => ({
+  const history: ChatMessage[] = (session?.history.slice(-30) ?? []).map((h) => ({
     role: h.role,
     content: h.content,
   }));
