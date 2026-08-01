@@ -1,10 +1,8 @@
 import { ClaudeProvider } from '../providers/claude.provider';
 import { getSession, createSession, saveSession, addToHistory } from '../memory/redis.memory';
 import { detectLanguage } from './language.service';
-import { translateWolofToFrench } from './translation.service';
 import { btpSystemPrompt } from '../prompts/system.prompt';
 import { ChatMessage } from '../interfaces/AIProvider';
-import { logger } from '../config/logger';
 
 const claude = new ClaudeProvider();
 
@@ -25,7 +23,6 @@ export interface ChatOutput {
 export const chat = async (input: ChatInput): Promise<ChatOutput> => {
   const { userId, tenantId, message, phone } = input;
 
-  // Session par numéro de téléphone → chaque utilisateur WhatsApp a sa propre mémoire
   const sessionId = phone ? `${tenantId}:${phone}` : `${tenantId}:${userId}`;
 
   let session = await getSession(sessionId);
@@ -34,26 +31,15 @@ export const chat = async (input: ChatInput): Promise<ChatOutput> => {
     await saveSession(session);
   }
 
-  // Détecter la langue uniquement sur le texte utilisateur (avant le bloc [CHANTIERS DISPONIBLES])
   const userTextOnly = message.split('\n\n[CHANTIERS DISPONIBLES]')[0];
   const language = detectLanguage(userTextOnly);
-  let processedMessage = message;
-  if (language === 'wo') {
-    // Traduire uniquement la partie utilisateur, puis réattacher le contexte injecté
-    const contextBlock = message.slice(userTextOnly.length);
-    const translatedUser = await translateWolofToFrench(userTextOnly);
-    processedMessage = translatedUser + contextBlock;
-    logger.debug('Translated wolof', { original: userTextOnly, translated: translatedUser });
-  }
 
-  // Construire l'historique (30 derniers messages)
   const history: ChatMessage[] = session.history.slice(-30).map((h) => ({
     role: h.role,
     content: h.content,
   }));
-  history.push({ role: 'user', content: processedMessage });
+  history.push({ role: 'user', content: message });
 
-  // Appel Claude — réponse attendue en JSON structuré { type, data }
   const response = await claude.chat({
     system: btpSystemPrompt,
     messages: history,
@@ -63,7 +49,6 @@ export const chat = async (input: ChatInput): Promise<ChatOutput> => {
 
   const reply = response.text ?? '';
 
-  // Parser la réponse JSON de Claude
   let parsed: Record<string, unknown> = { type: 'response_user', data: { message: reply } };
   try {
     const raw = typeof reply === 'string' ? reply : JSON.stringify(reply);
@@ -72,7 +57,6 @@ export const chat = async (input: ChatInput): Promise<ChatOutput> => {
       parsed = candidate;
     }
   } catch {
-    // Si Claude n'a pas renvoyé du JSON valide, on encapsule le texte
     const match = reply.match(/\{[\s\S]*\}/);
     if (match) {
       try {
@@ -82,7 +66,6 @@ export const chat = async (input: ChatInput): Promise<ChatOutput> => {
     }
   }
 
-  // Sauvegarder dans l'historique Redis
   await addToHistory(sessionId, 'user', message);
   await addToHistory(sessionId, 'assistant', reply);
 
@@ -101,19 +84,13 @@ export const streamChat = async (
 
   const userTextOnly = message.split('\n\n[CHANTIERS DISPONIBLES]')[0];
   const language = detectLanguage(userTextOnly);
-  let processedMessage = message;
-  if (language === 'wo') {
-    const contextBlock = message.slice(userTextOnly.length);
-    const translatedUser = await translateWolofToFrench(userTextOnly);
-    processedMessage = translatedUser + contextBlock;
-  }
 
   const session = await getSession(sessionId);
   const history: ChatMessage[] = (session?.history.slice(-30) ?? []).map((h) => ({
     role: h.role,
     content: h.content,
   }));
-  history.push({ role: 'user', content: processedMessage });
+  history.push({ role: 'user', content: message });
 
   let fullReply = '';
   await claude.chatStream({ system: btpSystemPrompt, messages: history }, (chunk) => {
