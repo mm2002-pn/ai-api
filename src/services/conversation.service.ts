@@ -34,12 +34,16 @@ export const chat = async (input: ChatInput): Promise<ChatOutput> => {
     await saveSession(session);
   }
 
-  // Détection langue + traduction wolof si nécessaire
-  const language = detectLanguage(message);
+  // Détecter la langue uniquement sur le texte utilisateur (avant le bloc [CHANTIERS DISPONIBLES])
+  const userTextOnly = message.split('\n\n[CHANTIERS DISPONIBLES]')[0];
+  const language = detectLanguage(userTextOnly);
   let processedMessage = message;
   if (language === 'wo') {
-    processedMessage = await translateWolofToFrench(message);
-    logger.debug('Translated wolof', { original: message, translated: processedMessage });
+    // Traduire uniquement la partie utilisateur, puis réattacher le contexte injecté
+    const contextBlock = message.slice(userTextOnly.length);
+    const translatedUser = await translateWolofToFrench(userTextOnly);
+    processedMessage = translatedUser + contextBlock;
+    logger.debug('Translated wolof', { original: userTextOnly, translated: translatedUser });
   }
 
   // Construire l'historique (30 derniers messages)
@@ -95,10 +99,13 @@ export const streamChat = async (
   const { userId, tenantId, message, phone } = input;
   const sessionId = phone ? `${tenantId}:${phone}` : `${tenantId}:${userId}`;
 
-  const language = detectLanguage(message);
+  const userTextOnly = message.split('\n\n[CHANTIERS DISPONIBLES]')[0];
+  const language = detectLanguage(userTextOnly);
   let processedMessage = message;
   if (language === 'wo') {
-    processedMessage = await translateWolofToFrench(message);
+    const contextBlock = message.slice(userTextOnly.length);
+    const translatedUser = await translateWolofToFrench(userTextOnly);
+    processedMessage = translatedUser + contextBlock;
   }
 
   const session = await getSession(sessionId);
