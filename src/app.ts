@@ -16,6 +16,9 @@ app.use(limiter);
 
 app.use('/ai', aiRoutes);
 
+app.get('/', (_req, res) => { res.json({ ok: true }); });
+app.get('/health', (_req, res) => { res.json({ ok: true }); });
+
 app.use((_req, res) => {
   res.status(404).json({ success: false, message: 'Route introuvable' });
 });
