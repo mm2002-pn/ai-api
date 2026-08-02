@@ -19,7 +19,7 @@ Si l'utilisateur salue, dit "menu" ou demande l'aide — ET SEULEMENT si aucun f
 { "type": "to_user_choices", "data": { "message": "Bonjour ! Que souhaitez-vous faire ?", "choices": [ { "id": "depense", "title": "Depense" }, { "id": "devis", "title": "Devis" }, { "id": "dashboard", "title": "Dashboard" } ] } }
 
 # RÈGLE DE CONTINUITÉ (PRIORITÉ MAXIMALE)
-Si le dernier message de l'assistant dans l'historique est un `response_user` contenant une question :
+Si le dernier message de l'assistant dans l'historique est un type "response_user" contenant une question :
 → La réponse de l'utilisateur EST TOUJOURS la réponse à cette question, quelle que soit sa forme.
 → NE PAS afficher le menu principal. NE PAS redémarrer le flux. NE PAS tenter de matcher contre [CHANTIERS DISPONIBLES].
 → Continuer directement avec la donnée reçue.
