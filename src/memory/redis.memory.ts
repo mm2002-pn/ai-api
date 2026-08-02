@@ -36,31 +36,32 @@ const getRedis = (): Redis | null => {
 const sessionKey = (sessionId: string) => `btp:session:${sessionId}`;
 
 export const getSession = async (sessionId: string): Promise<ConversationSession | null> => {
-  const client = getRedis();
   const key = sessionKey(sessionId);
-  try {
-    const data = client ? await client.get(key) : memGet(key);
-    return data ? (JSON.parse(data) as ConversationSession) : null;
-  } catch {
-    const data = memGet(key);
-    return data ? (JSON.parse(data) as ConversationSession) : null;
+  const client = getRedis();
+  if (client) {
+    try {
+      const data = await client.get(key);
+      if (data) return JSON.parse(data) as ConversationSession;
+    } catch {}
   }
+  const data = memGet(key);
+  return data ? (JSON.parse(data) as ConversationSession) : null;
 };
 
 export const saveSession = async (session: ConversationSession): Promise<void> => {
-  const client = getRedis();
   const key = sessionKey(session.sessionId);
   session.updatedAt = Date.now();
   const value = JSON.stringify(session);
-  try {
-    if (client) {
+  // toujours écrire dans memStore (garanti disponible)
+  memSetex(key, SESSION_TTL, value);
+  // aussi dans Redis si dispo (persistance cross-restart)
+  const client = getRedis();
+  if (client) {
+    try {
       await client.setex(key, SESSION_TTL, value);
-    } else {
-      memSetex(key, SESSION_TTL, value);
+    } catch (err) {
+      logger.warn('Redis saveSession failed', { err });
     }
-  } catch (err) {
-    logger.warn('Redis saveSession failed, using memory fallback', { err });
-    memSetex(key, SESSION_TTL, value);
   }
 };
 
