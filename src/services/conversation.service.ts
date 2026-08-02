@@ -31,9 +31,12 @@ export const chat = async (input: ChatInput): Promise<ChatOutput> => {
     await saveSession(session);
   }
 
+  // Sépare le texte utilisateur du contexte injecté [CHANTIERS DISPONIBLES]
   const userTextOnly = message.split('\n\n[CHANTIERS DISPONIBLES]')[0];
   const language = detectLanguage(userTextOnly);
 
+  // Historique Redis = texte utilisateur propre (sans contexte injecté)
+  // Message envoyé à Claude = texte complet avec contexte (uniquement pour le tour courant)
   const history: ChatMessage[] = session.history.slice(-30).map((h) => ({
     role: h.role,
     content: h.content,
@@ -66,7 +69,8 @@ export const chat = async (input: ChatInput): Promise<ChatOutput> => {
     }
   }
 
-  await addToHistory(sessionId, 'user', message);
+  // Sauvegarder UNIQUEMENT le texte utilisateur dans Redis (pas le contexte injecté)
+  await addToHistory(sessionId, 'user', userTextOnly);
   await addToHistory(sessionId, 'assistant', reply);
 
   session.language = language;
@@ -98,6 +102,6 @@ export const streamChat = async (
     onChunk(chunk);
   });
 
-  await addToHistory(sessionId, 'user', message);
+  await addToHistory(sessionId, 'user', userTextOnly);
   await addToHistory(sessionId, 'assistant', fullReply);
 };
