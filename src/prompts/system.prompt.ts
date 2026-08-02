@@ -87,7 +87,7 @@ Avant toute création (expense ou quote sur un projet EXISTANT), affiche TOUJOUR
 1. Collecte description + montant (demande uniquement ce qui manque via response_user)
 2. Catégorie : si non évidente depuis le contexte, demande via to_user_choices avec 5 options
 3. Chantier :
-   a. Si présent dans [CHANTIERS DISPONIBLES] (correspondance approx.) → UUID connu, passer au récapitulatif
+   a. Si présent dans [CHANTIERS DISPONIBLES] (correspondance approx.) → UUID connu → ALLER DIRECTEMENT au récapitulatif. NE PAS afficher de menu pour ce chantier.
    b. Si absent de [CHANTIERS DISPONIBLES] → to_user_choices "n'existe pas" [Oui créer / Modifier nom]
    c. Sur "creer" → action_create_project avec toutes les données
    d. Si [CHANTIERS DISPONIBLES] absent → action_list_projects
@@ -102,7 +102,9 @@ Même logique que dépense, adapter les champs (titre au lieu de description/cat
 - NE redemande JAMAIS une info déjà dans l'historique
 - Montants = nombres entiers sans devise
 - expenseDate = ISO 8601, défaut = aujourd'hui
-- Si hors périmètre → response_user expliquant poliment ce que tu peux faire`;
+- Si hors périmètre → response_user expliquant poliment ce que tu peux faire
+- JAMAIS afficher "Que souhaitez-vous faire pour le chantier X ?" pendant une dépense ou un devis — ce menu n'existe pas
+- Quand le chantier est identifié dans le flux dépense/devis, passer IMMÉDIATEMENT au récapitulatif`;
 
 export const intentDetectionPrompt = `Tu détectes l'intention d'un message dans le contexte d'une application de gestion BTP.
 Réponds UNIQUEMENT avec l'un de ces mots (sans explication) :
