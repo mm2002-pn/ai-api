@@ -3,13 +3,14 @@ import {
   chatController,
   chatStreamController,
   transcribeController,
+  ocrController,
   ttsController,
   translateController,
   intentController,
   providersController,
 } from '../controllers/ai.controller';
 import { authenticate } from '../middleware/auth.middleware';
-import { uploadAudio } from '../middleware/upload.middleware';
+import { uploadAudio, uploadImage } from '../middleware/upload.middleware';
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.use(authenticate);
 router.post('/chat', chatController);
 router.post('/chat/stream', chatStreamController);
 router.post('/transcribe', uploadAudio, transcribeController);
+router.post('/ocr', uploadImage, ocrController);
 router.post('/tts', ttsController);
 router.post('/translate', translateController);
 router.post('/intent', intentController);

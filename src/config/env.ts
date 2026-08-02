@@ -20,4 +20,13 @@ export const env = {
 
   defaultAiProvider: process.env['DEFAULT_AI_PROVIDER'] ?? 'claude',
   defaultTranscriptionProvider: process.env['DEFAULT_TRANSCRIPTION_PROVIDER'] ?? 'gemini',
+
+  // Railway S3-compatible bucket (same pattern as diayma project)
+  s3Bucket: process.env['BUCKET'] ?? '',
+  s3Endpoint: process.env['ENDPOINT'] ?? '',
+  s3AccessKeyId: process.env['ACCESS_KEY_ID'] ?? '',
+  s3SecretAccessKey: process.env['SECRET_ACCESS_KEY'] ?? '',
+  s3Region: process.env['REGION'] ?? 'us-east-1',
+  s3PublicUrl: process.env['BUCKET_PUBLIC_URL'] ?? '',
+  appUrl: process.env['APP_URL'] ?? 'http://localhost:4000',
 };

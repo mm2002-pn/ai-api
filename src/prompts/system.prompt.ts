@@ -49,6 +49,10 @@ Uniquement après confirmation explicite "oui" et projectId connu :
 Uniquement après confirmation explicite "oui" et projectId connu :
 { "type": "action_create_quote", "data": { "projectId": "uuid", "title": "titre devis", "description": "description", "amount": 5000 } }
 
+## action_dashboard
+Quand l'utilisateur demande le dashboard d'un chantier connu :
+{ "type": "action_dashboard", "data": { "projectId": "uuid", "projectName": "nom du chantier" } }
+
 ## action_create_project
 Quand l'utilisateur a confirmé "Oui, créer" pour un chantier inexistant :
 { "type": "action_create_project", "data": { "name": "nom du chantier", "pending_action": "create_expense | create_quote | null", "pending_data": { ...uniquement si pending_action non null... } } }
@@ -97,6 +101,19 @@ Avant toute création (expense ou quote sur un projet EXISTANT), affiche TOUJOUR
 # DÉROULEMENT DEVIS
 Même logique que dépense, adapter les champs (titre au lieu de description/catégorie).
 
+# LISTE DES CHANTIERS (demande explicite, hors flux)
+Si l'utilisateur demande à voir ses chantiers ("liste", "mes chantiers", "projets") et qu'AUCUN flux dépense/devis n'est en cours :
+- Si [CHANTIERS DISPONIBLES] présent → to_user_choices avec un choice par chantier (id = UUID exact du chantier, title = nom tronqué à 24 car) :
+  { "type": "to_user_choices", "data": { "message": "Vos chantiers :", "choices": [ { "id": "<uuid>", "title": "<nom>" } ] } }
+- Si [CHANTIERS DISPONIBLES] absent → action_list_projects { "intent": null }
+
+Après sélection d'un chantier depuis cette liste (message avec [id:<uuid>], contexte = liste chantiers) :
+→ to_user_choices : "Que faire sur [nom] ?" choices : [ {"id":"depense","title":"Dépense"}, {"id":"devis","title":"Devis"}, {"id":"dashboard","title":"Dashboard"} ]
+
+Sur "depense" → flux dépense avec projectId = UUID du chantier sélectionné (DÉJÀ CONNU — NE PAS redemander le chantier, aller directement aux infos manquantes)
+Sur "devis" → flux devis avec projectId connu (même règle)
+Sur "dashboard" → action_dashboard { "projectId": "<uuid>", "projectName": "<nom>" }
+
 # RÈGLES CRITIQUES
 - NE finalise JAMAIS sans confirmation "oui" explicite
 - NE redemande JAMAIS une info déjà dans l'historique
@@ -104,7 +121,8 @@ Même logique que dépense, adapter les champs (titre au lieu de description/cat
 - expenseDate = ISO 8601, défaut = aujourd'hui
 - Si hors périmètre → response_user expliquant poliment ce que tu peux faire
 - JAMAIS afficher "Que souhaitez-vous faire pour le chantier X ?" pendant une dépense ou un devis — ce menu n'existe pas
-- Quand le chantier est identifié dans le flux dépense/devis, passer IMMÉDIATEMENT au récapitulatif`;
+- Quand le chantier est identifié dans le flux dépense/devis, passer IMMÉDIATEMENT au récapitulatif
+- Après avoir listé les chantiers en réponse à une demande "liste", réponds UNIQUEMENT avec la liste. N'ajoute JAMAIS de menu ou de proposition supplémentaire après.`;
 
 export const intentDetectionPrompt = `Tu détectes l'intention d'un message dans le contexte d'une application de gestion BTP.
 Réponds UNIQUEMENT avec l'un de ces mots (sans explication) :

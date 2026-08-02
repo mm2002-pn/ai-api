@@ -7,6 +7,7 @@ import { translateWolofToFrench } from '../services/translation.service';
 import { detectLanguage } from '../services/language.service';
 import { detectIntent } from '../services/intent.service';
 import { getToolDefinitions } from '../services/toolRouter.service';
+import { ocrReceipt } from '../services/ocr.service';
 import { logger } from '../config/logger';
 import { env } from '../config/env';
 
@@ -127,6 +128,21 @@ export const intentController = async (req: AIRequest, res: Response): Promise<v
   const language = detectLanguage(text);
   const intent = await detectIntent(text);
   res.json({ success: true, data: { intent, language } });
+};
+
+export const ocrController = async (req: AIRequest, res: Response): Promise<void> => {
+  if (!req.file) {
+    res.status(422).json({ success: false, message: 'Fichier image requis (champ: image)' });
+    return;
+  }
+
+  try {
+    const { text, category, imageUrl } = await ocrReceipt(req.file.buffer, req.file.mimetype);
+    res.json({ success: true, data: { text, category, imageUrl } });
+  } catch (err) {
+    logger.error('OCR error', { err });
+    res.status(500).json({ success: false, message: 'Erreur OCR' });
+  }
 };
 
 export const providersController = (_req: AIRequest, res: Response): void => {

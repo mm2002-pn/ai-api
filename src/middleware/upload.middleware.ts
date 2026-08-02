@@ -16,11 +16,34 @@ const multerUpload = multer({
   },
 }).single('audio');
 
-// Wrapper pour convertir les erreurs multer en JSON (évite la page HTML d'erreur)
+const multerImageUpload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/octet-stream') {
+      cb(null, true);
+    } else {
+      cb(new Error(`Format image non supporté: ${file.mimetype}`));
+    }
+  },
+}).single('image');
+
 export const uploadAudio = (req: Request, res: Response, next: NextFunction): void => {
   multerUpload(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       res.status(422).json({ success: false, message: `Erreur upload: ${err.message}` });
+    } else if (err) {
+      res.status(422).json({ success: false, message: err.message });
+    } else {
+      next();
+    }
+  });
+};
+
+export const uploadImage = (req: Request, res: Response, next: NextFunction): void => {
+  multerImageUpload(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      res.status(422).json({ success: false, message: `Erreur upload image: ${err.message}` });
     } else if (err) {
       res.status(422).json({ success: false, message: err.message });
     } else {
