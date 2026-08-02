@@ -1,12 +1,15 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { IAIProvider, ChatOptions, ChatResponse } from '../interfaces/AIProvider';
 import { env } from '../config/env';
 
 export class GeminiProvider implements IAIProvider {
   private client: GoogleGenerativeAI;
+  private genai: GoogleGenAI;
 
   constructor() {
     this.client = new GoogleGenerativeAI(env.geminiApiKey);
+    this.genai = new GoogleGenAI({ apiKey: env.geminiApiKey });
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {
@@ -45,8 +48,7 @@ export class GeminiProvider implements IAIProvider {
   }
 
   async transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {
-    const model = this.client.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
+    const base64 = audioBuffer.toString('base64');
     const prompt = `Tu reçois un message vocal en wolof et/ou en français. Analyse-le.
 Tâches :
 1. lang : "wo" si wolof (même mélangé français), "fr" si français uniquement.
@@ -57,18 +59,23 @@ Si rien d'intelligible : tous les champs vides, lang="fr".
 Réponds UNIQUEMENT en JSON strict sans markdown :
 {"lang":"wo"|"fr","original":"...","french":"..."}`;
 
-    const result = await model.generateContent([
-      { inlineData: { data: audioBuffer.toString('base64'), mimeType } },
-      prompt,
-    ]);
+    const response = await this.genai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: {
+        parts: [
+          { inlineData: { mimeType: mimeType || 'audio/ogg', data: base64 } },
+          { text: prompt },
+        ],
+      },
+      config: { temperature: 0.1 },
+    });
 
-    const raw = result.response.text().trim()
+    const raw = (response.text || '').trim()
       .replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
 
     try {
       const obj = JSON.parse(raw) as { lang?: string; original?: string; french?: string };
-      const french = (obj.french || obj.original || '').trim();
-      return french;
+      return (obj.french || obj.original || '').trim();
     } catch {
       return raw;
     }
