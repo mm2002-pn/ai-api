@@ -45,18 +45,32 @@ export class GeminiProvider implements IAIProvider {
   }
 
   async transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {
-    const model = this.client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = this.client.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    const prompt = `Tu reçois un message vocal en wolof et/ou en français. Analyse-le.
+Tâches :
+1. lang : "wo" si wolof (même mélangé français), "fr" si français uniquement.
+2. original : transcription mot pour mot dans la langue parlée.
+3. french : traduction française fidèle (si lang="fr", identique à original).
+
+Si rien d'intelligible : tous les champs vides, lang="fr".
+Réponds UNIQUEMENT en JSON strict sans markdown :
+{"lang":"wo"|"fr","original":"...","french":"..."}`;
 
     const result = await model.generateContent([
-      {
-        inlineData: {
-          data: audioBuffer.toString('base64'),
-          mimeType,
-        },
-      },
-      'Transcris exactement ce message audio en gardant la langue originale (français ou wolof). Ne traduis pas.',
+      { inlineData: { data: audioBuffer.toString('base64'), mimeType } },
+      prompt,
     ]);
 
-    return result.response.text().trim();
+    const raw = result.response.text().trim()
+      .replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+
+    try {
+      const obj = JSON.parse(raw) as { lang?: string; original?: string; french?: string };
+      const french = (obj.french || obj.original || '').trim();
+      return french;
+    } catch {
+      return raw;
+    }
   }
 }

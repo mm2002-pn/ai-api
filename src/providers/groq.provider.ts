@@ -44,15 +44,20 @@ export class GroqProvider implements IAIProvider {
     }
   }
 
-  // Whisper via Groq pour transcription rapide
+  // Whisper via Groq — auto-detect langue (wolof inclus), verbose_json pour récupérer la langue
   async transcribeAudio(audioBuffer: Buffer, filename: string): Promise<string> {
-    const file = new File([new Uint8Array(audioBuffer)], filename, { type: 'audio/ogg' });
+    const ext = filename.split('.').pop() ?? 'ogg';
+    const mimeMap: Record<string, string> = { ogg: 'audio/ogg', webm: 'audio/webm', mp3: 'audio/mpeg', wav: 'audio/wav', mp4: 'audio/mp4' };
+    const mimeType = mimeMap[ext] ?? 'audio/ogg';
+    const file = new File([new Uint8Array(audioBuffer)], filename, { type: mimeType });
 
-    const response = await this.client.audio.transcriptions.create({
+    // Pas de restriction de langue → Whisper auto-détecte le wolof
+    const response = await (this.client.audio.transcriptions.create as Function)({
       file,
       model: 'whisper-large-v3',
+      response_format: 'verbose_json',
     });
 
-    return response.text;
+    return (response as { text: string }).text ?? '';
   }
 }
