@@ -5,41 +5,62 @@ import { logger } from '../config/logger';
 
 const SESSION_TTL = 60 * 60 * 24; // 24h
 
+// In-memory fallback used when Redis is unavailable
+const memStore = new Map<string, { data: string; expiresAt: number }>();
+const memGet = (key: string): string | null => {
+  const e = memStore.get(key);
+  if (!e) return null;
+  if (Date.now() > e.expiresAt) { memStore.delete(key); return null; }
+  return e.data;
+};
+const memSetex = (key: string, ttlSec: number, value: string): void => {
+  memStore.set(key, { data: value, expiresAt: Date.now() + ttlSec * 1000 });
+};
+
 let redis: Redis | null = null;
+let redisOk = false;
 
 const getRedis = (): Redis | null => {
   if (!redis) {
     try {
-      redis = new Redis(env.redisUrl, { lazyConnect: true, enableOfflineQueue: false });
-      redis.on('error', () => { redis = null; });
+      redis = new Redis(env.redisUrl, { lazyConnect: true, enableOfflineQueue: false, connectTimeout: 3000 });
+      redis.on('connect', () => { redisOk = true; });
+      redis.on('error', () => { redisOk = false; });
     } catch {
       return null;
     }
   }
-  return redis;
+  return redisOk ? redis : null;
 };
 
 const sessionKey = (sessionId: string) => `btp:session:${sessionId}`;
 
 export const getSession = async (sessionId: string): Promise<ConversationSession | null> => {
   const client = getRedis();
-  if (!client) return null;
+  const key = sessionKey(sessionId);
   try {
-    const data = await client.get(sessionKey(sessionId));
+    const data = client ? await client.get(key) : memGet(key);
     return data ? (JSON.parse(data) as ConversationSession) : null;
   } catch {
-    return null;
+    const data = memGet(key);
+    return data ? (JSON.parse(data) as ConversationSession) : null;
   }
 };
 
 export const saveSession = async (session: ConversationSession): Promise<void> => {
   const client = getRedis();
-  if (!client) return;
+  const key = sessionKey(session.sessionId);
+  session.updatedAt = Date.now();
+  const value = JSON.stringify(session);
   try {
-    session.updatedAt = Date.now();
-    await client.setex(sessionKey(session.sessionId), SESSION_TTL, JSON.stringify(session));
+    if (client) {
+      await client.setex(key, SESSION_TTL, value);
+    } else {
+      memSetex(key, SESSION_TTL, value);
+    }
   } catch (err) {
-    logger.warn('Redis saveSession failed', { err });
+    logger.warn('Redis saveSession failed, using memory fallback', { err });
+    memSetex(key, SESSION_TTL, value);
   }
 };
 
